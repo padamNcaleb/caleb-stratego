@@ -1,0 +1,77 @@
+import streamlit as st
+import yfinance as yf
+import pandas as pd
+import numpy as np
+import time
+
+# --- CONFIGURATION DE LA PAGE ---
+st.set_page_config(page_title="CALEB STRATÉGOS V9.4", layout="wide")
+
+# STYLE CYBER-DARK
+st.markdown("""
+    <style>
+    .main { background-color: #0b0e14; color: #00ffc8; }
+    .stMetric { background-color: #1a1f29; border-left: 5px solid #00ffc8; padding: 15px; border-radius: 5px; }
+    .buy-signal { color: #00ff00; font-weight: bold; font-size: 28px; background: rgba(0,255,0,0.1); padding: 10px; border-radius: 5px; }
+    .sell-signal { color: #ff4b4b; font-weight: bold; font-size: 28px; background: rgba(255,75,75,0.1); padding: 10px; border-radius: 5px; }
+    </style>
+    """, unsafe_allow_html=True)
+
+# FONCTION DE CALCUL TECHNIQUE (RSI)
+def compute_rsi(data, window=14):
+    diff = data.diff(1)
+    gain = (diff.where(diff > 0, 0)).rolling(window=window).mean()
+    loss = (-diff.where(diff < 0, 0)).rolling(window=window).mean()
+    rs = gain / loss
+    return (100 - (100 / (1 + rs))).fillna(50)
+
+st.title("🛡️ CALEB STRATÉGOS V9.4")
+st.subheader("TERMINAL DÉCISIONNEL - FLUX RÉEL CLOUD")
+
+# SÉLECTION DE L'ACTIF
+asset = st.sidebar.selectbox("Actif à surveiller :", ["SOL-USD", "BTC-USD", "ETH-USD", "FET-USD"])
+interval = st.sidebar.selectbox("Unité de temps :", ["1m", "5m", "15m"], index=1)
+
+# ZONE DE MISE À JOUR DYNAMIQUE
+placeholder = st.empty()
+
+while True:
+    try:
+        # RÉCUPÉRATION DES DONNÉES
+        df = yf.download(asset, period="1d", interval=interval, auto_adjust=True, prepost=False, progress=False)
+        
+        if not df.empty and len(df) > 15:
+            # CALCULS
+            close_prices = df['Close']
+            df['RSI'] = compute_rsi(close_prices)
+            
+            # EXTRACTION SÉCURISÉE DES VALEURS
+            last_price = float(close_prices.iloc[-1])
+            last_rsi = float(df['RSI'].iloc[-1])
+            
+            with placeholder.container():
+                c1, c2 = st.columns(2)
+                c1.metric(f"PRIX {asset}", f"{last_price:.2f} $")
+                c2.metric("FORCE DU MARCHÉ (RSI)", f"{last_rsi:.1f}")
+                
+                st.markdown("---")
+                
+                # LOGIQUE DE SIGNAL
+                if last_rsi < 32:
+                    st.markdown("<p class='buy-signal'>🚀 SIGNAL D'ACHAT DÉTECTÉ (Opportunité)</p>", unsafe_allow_html=True)
+                    st.success(f"🎯 Objectif de profit suggéré : {(last_price * 1.015):.2f} $")
+                elif last_rsi > 68:
+                    st.markdown("<p class='sell-signal'>⚠️ SIGNAL DE VENTE DÉTECTÉ (Danger)</p>", unsafe_allow_html=True)
+                else:
+                    st.info("ANALYSE : NEUTRE - ATTENTE D'UNE ANOMALIE")
+                
+                st.write("### Graphique de Transaction Live")
+                st.line_chart(close_prices)
+                st.caption(f"Synchronisé avec Wall Street à : {time.strftime('%H:%M:%S')}")
+        else:
+            placeholder.warning("Connexion aux flux financiers en cours... Patientez 10 secondes.")
+            
+    except Exception as e:
+        placeholder.error(f"Alerte système : {e}")
+    
+    time.sleep(15) # Pause entre les scans pour le Cloud
